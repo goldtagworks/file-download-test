@@ -1,12 +1,20 @@
 <template>
-    <q-page class="row items-center justify-evenly">
-        <q-btn @click="onClickedFileRead"> 파일읽기 </q-btn>
-        <q-btn @click="onClickedDownload"> 다운로드 </q-btn>
-        <q-linear-progress size="25px" :value="progress1" color="accent">
-            <div class="absolute-full flex flex-center">
-                <q-badge color="white" text-color="accent" :label="progressLabel1" />
-            </div>
-        </q-linear-progress>
+    <q-page padding>
+        <p class="row items-center justify-evenly">
+            <VideoPlayer :src="videoUrl"></VideoPlayer>
+        </p>
+
+        <p>
+            <q-btn @click="onClickedFileRead"> 파일읽기 </q-btn>
+            <q-btn @click="onClickedDownload"> 다운로드 </q-btn>
+        </p>
+        <p>
+            <q-linear-progress size="25px" :value="progress1" color="accent">
+                <div class="absolute-full flex flex-center">
+                    <q-badge color="white" text-color="accent" :label="progressLabel1" />
+                </div>
+            </q-linear-progress>
+        </p>
     </q-page>
 </template>
 
@@ -15,13 +23,15 @@ import { ref, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
-import axios from 'axios';
+import VideoPlayer from 'src/components/VideoPlayer.vue';
 
 defineOptions({
     name: 'IndexPage'
 });
 
 const $q = useQuasar();
+const downloadUrl = 'http://127.0.0.1/BigBuckBunny.mp4';
+const videoUrl = ref('');
 const progress1 = ref(0);
 const progressLabel1 = computed(() => (progress1.value * 100).toFixed(2) + '%');
 
@@ -55,37 +65,21 @@ const onClickedDownload = () => {
             // c:\workspacePHP\D300.source\htdocs\ElephantsDream.mp4
             // c:\workspacePHP\D300.source\htdocs\BigBuckBunny.mp4
 
-            const downloadStream = await axios.post(
-                'http://127.0.0.1/BigBuckBunny.mp4',
-                {},
-                {
-                    responseType: 'stream',
-                    cancelToken: axios.CancelToken.source().token
-                }
-            );
-
-            if (downloadStream) {
-                let transferred = 0;
-                const total = parseInt(downloadStream?.headers['content-length'] ?? '0');
-
-                downloadStream?.data.on('data', (chunk: any): void => {
-                    transferred += chunk.length;
-
-                    progress1.value = (transferred * 100) / total;
-                });
-
-                return (async (): Promise<any> => {
-                    try {
-                        const filename = 'test.mp4';
-                        await Filesystem.writeFile({ path: filename, data: downloadStream?.data, directory: Directory.Data, encoding: Encoding.ASCII });
-                        //console.log(`File downloaded to ${query?.filename}`);
-                        return { status: '0' };
-                    } catch (err) {
-                        const e: any = err;
-                        console.error(`Something went wrong. ${e.message}`);
+            fetch(downloadUrl)
+                .then(async (response: any) => {
+                    //
+                    const reader = response.body.getReader();
+                    for await (const chunk of readChunks(reader)) {
+                        console.log(`received chunk of size: ${chunk.length}`);
+                        console.log(chunk);
                     }
-                })();
-            }
+                })
+                .then((result: any) => {
+                    console.log('all done!', result);
+                })
+                .catch((err: any) => {
+                    console.error(err);
+                });
         })
         .onCancel(() => {
             // console.log('Cancel')
@@ -94,4 +88,21 @@ const onClickedDownload = () => {
             // console.log('I am triggered on both OK and Cancel')
         });
 };
+
+const readChunks = (reader: any) => {
+    return {
+        async *[Symbol.asyncIterator]() {
+            let readResult = await reader.read();
+            while (!readResult.done) {
+                yield readResult.value;
+                readResult = await reader.read();
+            }
+        }
+    };
+};
 </script>
+<style>
+p {
+    margin-bottom: 16px;
+}
+</style>
